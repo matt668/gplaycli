@@ -93,10 +93,10 @@ class GPlaycli:
 		self.api 			= None
 		self.token_passed 	= False
 
-
 		config = configparser.ConfigParser()
 		if config_file:
 			config.read(config_file)
+		self.method             = config.get('Credentials', 'login_method', fallback='email')
 		self.gmail_address      = config.get('Credentials', 'gmail_address', fallback=None)
 		self.gmail_password		= config.get('Credentials', 'gmail_password', fallback=None)
 		self.token_enable 		= config.getboolean('Credentials', 'token', fallback=True)
@@ -149,18 +149,27 @@ class GPlaycli:
 
 		if args.token is not None:
 			self.token_enable = args.token
-		if self.token_enable is not None:
-			if args.token_url is not None:
-				self.token_url = args.token_url
-			if (args.token_str is not None) and (args.gsfid is not None):
-				self.token = args.token_str
-				self.gsfid = args.gsfid
-				self.token_passed = True
-			elif args.token_str is None and args.gsfid is None:
-				pass
-			else:
-				raise TypeError("Token string and GSFID have to be passed at the same time.")
 
+		if args.token_url is not None:
+				self.token_url = args.token_url
+
+		if (args.token_str is not None) and (args.gsfid is not None):
+			self.token = args.token_str
+			self.gsfid = args.gsfid
+			self.token_passed = True
+		elif args.token_str is None and args.gsfid is None:
+			pass
+		else:
+			raise TypeError("Token string and GSFID have to be passed at the same time.")
+
+		if args.login_method is not None:
+			self.method = args.login_method
+
+		if (self.method == 'email') and (self.gmail_address is None or self.gmail_password is None):
+		    raise TypeError("Email and Password must be specified in config file if login method is 'email'.")
+
+		logger.info('Login method is %s', self.method)
+		logger.info('Token storage is set to %s', self.token_enable)
 		if self.logging_enable:
 			self.success_logfile = "apps_downloaded.log"
 			self.failed_logfile  = "apps_failed.log"
@@ -168,17 +177,11 @@ class GPlaycli:
 
 	########## Public methods ##########
 
-	def retrieve_token(self, force_new=False):
+	def retrieve_tokendispenser_token(self):
 		"""
-		Return a token. If a cached token exists,
-		it will be used. Else, or if force_new=True,
-		a new token is fetched from the token-dispenser
+		Return a token from the token-dispenser
 		server located at self.token_url.
 		"""
-		self.token, self.gsfid, self.device = self.get_cached_token()
-		if (self.token is not None and not force_new and self.device == self.device_codename):
-			logger.info("Using cached token.")
-			return
 
 		logger.info("Retrieving token ...")
 		url = '/'.join([self.token_url, self.device_codename])
@@ -384,7 +387,7 @@ class GPlaycli:
 
 	########## Internal methods ##########
 
-	def connect(self):
+	def connect(self, force_new=False):
 		"""
 		Connect GplayCli to the Google Play API.
 		If self.token_enable=True, the token from
@@ -394,11 +397,27 @@ class GPlaycli:
 		is installed.
 		"""
 		self.api = GooglePlayAPI(locale=self.locale, timezone=self.timezone, device_codename=self.device_codename)
-		if self.token_enable:
-			self.retrieve_token()
+
+		if self.token_enable and not force_new and not self.token_passed:
+			self.token, self.gsfid, self.device = self.get_cached_token()
+		elif self.token_passed:
+			pass
+		else:
+			self.token = None
+			self.gsfid = None
+
+		if self.method == 'email':
+			if (self.token_enable and self.token is not None and self.device == self.device_codename):
+				logger.info("Using cached token.")
+				return self.connect_token()
+			else:
+				return self.connect_credentials()
+		elif self.method == 'dispenser':
+			if (self.token is not None and self.device == self.device_codename):
+				self.retrieve_tokendispenser_token()
 			return self.connect_token()
 		else:
-			return self.connect_credentials()
+			logger.error("Incorrect authenticate method (%s)", self.method)
 
 	def connect_token(self):
 		if self.token_passed:
@@ -406,11 +425,10 @@ class GPlaycli:
 		else:
 			logger.info("Using auto retrieved token to connect to API")
 		try:
-			self.api.login(authSubToken=self.token, gsfId=int(self.gsfid, 16))
+			self.api.login(authSubToken=self.token, gsfId=int(self.gsfid))
 		except (ValueError, IndexError, LoginError, DecodeError, SystemError, RequestError):
 			logger.info("Token has expired or is invalid. Retrieving a new one...")
-			self.retrieve_token(force_new=True)
-			self.connect()
+			self.connect(force_new=True)
 		return True, None
 
 	def connect_credentials(self):
@@ -428,6 +446,10 @@ class GPlaycli:
 		except LoginError as e:
 			logger.error("Bad authentication, login or password incorrect (%s)", e)
 			return False, ERRORS.CANNOT_LOGIN_GPLAY
+
+		if self.token_enable:
+			logger.info("Writing token to cache Token: %s GsfId: %s", self.api.authSubToken, str(self.api.gsfId))
+			self.write_cached_token(self.api.authSubToken, str(self.api.gsfId), self.device_codename)
 		return True, None
 
 
@@ -599,7 +621,8 @@ def main():
 	parser.add_argument('-u',  '--update',				help="Update all APKs in a given folder", metavar="FOLDER")
 	parser.add_argument('-f',  '--folder',				help="Where to put the downloaded Apks, only for -d command", metavar="FOLDER", nargs=1, default=['.'])
 	parser.add_argument('-dc', '--device-codename',		help="The device codename to fake", choices=GooglePlayAPI.getDevicesCodenames(), metavar="DEVICE_CODENAME")
-	parser.add_argument('-t',  '--token',				help="Instead of classical credentials, use the tokenize version", action='store_true', default=True)
+	parser.add_argument('-m',  '--login-method',		help="The login method to use either email for classic credentials or dispenser for token dispenser", metavar="METHOD", nargs=1)
+	parser.add_argument('-t',  '--token',				help="Cache tokens for reuse", action='store_false', default=True)
 	parser.add_argument('-tu', '--token-url',			help="Use the given tokendispenser URL to retrieve a token", metavar="TOKEN_URL")
 	parser.add_argument('-ts', '--token-str',			help="Supply token string by yourself, need to supply GSF_ID at the same time", metavar="TOKEN_STR")
 	parser.add_argument('-g',  '--gsfid',				help="Supply GSF_ID by yourself, need to supply token string at the same time", metavar="GSF_ID")
