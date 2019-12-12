@@ -24,6 +24,7 @@ import logging
 import argparse
 import requests
 import configparser
+import pprint
 
 from gpapi.googleplay import GooglePlayAPI, LoginError, RequestError
 from google.protobuf.message import DecodeError
@@ -321,6 +322,45 @@ class GPlaycli:
 		return to_download_items - failed_items
 
 	@hooks.connected
+	def bulkdetails(self, pkg_todetail):
+		"""
+        Get deatils for apks from the pkg_todetail list
+
+        pkg_todetail -- list of app names
+
+        Example: ['org.mozilla.focus','org.mozilla.firefox']
+
+        """
+		# BulkDetails requires only one HTTP request
+		# Get APK info from store
+		try:
+			details = self.api.bulkDetails(pkg_todetail)
+			json.dump(details, open("details.json","w"))
+		except RequestError as request_error:
+			logger.error("Error getting bulk details")
+		return
+
+	@hooks.connected
+	def details(self, pkg_todetail):
+		"""
+	    Get deatils for apks from the pkg_todetail list
+
+	    pkg_todetail -- a single app name
+
+	    Example: 'org.mozilla.focus'
+
+	    """
+		# BulkDetails requires only one HTTP request
+		# Get APK info from store
+		try:
+			details = self.api.details(str(pkg_todetail))
+			json.dump(details, open("details.json","w"))
+		except RequestError as request_error:
+			logger.error("Error getting details")
+			pprint.pprint(request_error)
+		return
+
+	@hooks.connected
 	def search(self, search_string, nb_results, free_only=True, include_headers=True):
 		"""
 		Search the given string search_string on the Play Store.
@@ -611,6 +651,8 @@ def main():
 	parser.add_argument('-v',  '--verbose',				help="Be verbose", action='store_true')
 	parser.add_argument('-s',  '--search',				help="Search the given string in Google Play Store", metavar="SEARCH")
 	parser.add_argument('-d',  '--download',			help="Download the Apps that map given AppIDs", metavar="AppID", nargs="+")
+	parser.add_argument('-de',  '--details',			help="Get the details for the given AppID", metavar="AppID")
+	parser.add_argument('-bd',  '--bulk-details',		help="Get the details for the given AppIDs", metavar="AppID", nargs="+")
 	parser.add_argument('-y',  '--yes',					help="Say yes to all prompted questions", action='store_true')
 	parser.add_argument('-l',  '--list',				help="List APKS in the given folder, with details", metavar="FOLDER")
 	parser.add_argument('-P',  '--paid',				help="Also search for paid apps", action='store_true', default=False)
@@ -663,6 +705,11 @@ def main():
 			cli.download_folder = args.folder[0]
 		cli.download(args.download)
 
+	if args.bulk_details is not None:
+		cli.bulkdetails(args.bulk_details)
+
+	if args.details is not None:
+		cli.details(args.details)
 
 if __name__ == '__main__':
 	main()
