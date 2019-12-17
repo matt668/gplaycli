@@ -167,7 +167,7 @@ class GPlaycli:
 			self.method = args.login_method
 
 		if (self.method == 'email') and (self.gmail_address is None or self.gmail_password is None):
-		    raise TypeError("Email and Password must be specified in config file if login method is 'email'.")
+			raise TypeError("Email and Password must be specified in config file if login method is 'email'.")
 
 		logger.info('Login method is %s', self.method)
 		logger.info('Token storage is set to %s', self.token_enable)
@@ -287,8 +287,11 @@ class GPlaycli:
 				continue
 
 			additional_data = data_iter['additionalData']
+			split_file = data_iter['split']
 			total_size = int(data_iter['file']['total_size'])
 			chunk_size = int(data_iter['file']['chunk_size'])
+
+			filenames = []
 			try:
 				with open(filepath, "wb") as fbuffer:
 					bar = util.progressbar(expected_size=total_size, hide=not self.progress_bar)
@@ -296,18 +299,30 @@ class GPlaycli:
 						fbuffer.write(chunk)
 						bar.show(index * chunk_size)
 					bar.done()
+				filenames.append(filepath)
+
+				for split in split_file:
+					splitfilename = "%s-%s.apk" % (detail['docid'], split['name'])
+					splitfilename = os.path.join(download_folder, splitfilename)
+					filenames.append(splitfilename)
+					with open(splitfilename, "wb") as fbuffer:
+						for index, chunk in enumerate(split['file']['data']):
+							fbuffer.write(chunk)
+
 				if additional_data:
 					for obb_file in additional_data:
 						obb_filename = "%s.%s.%s.obb" % (obb_file["type"], obb_file["versionCode"], data_iter["docId"])
 						obb_filename = os.path.join(download_folder, obb_filename)
 						obb_total_size = int(obb_file['file']['total_size'])
 						obb_chunk_size = int(obb_file['file']['chunk_size'])
+						filenames.append(obb_filename)
 						with open(obb_filename, "wb") as fbuffer:
 							bar = util.progressbar(expected_size=obb_total_size, hide=not self.progress_bar)
 							for index, chunk in enumerate(obb_file["file"]["data"]):
 								fbuffer.write(chunk)
 								bar.show(index * obb_chunk_size)
 							bar.done()
+				print(filenames)
 			except IOError as exc:
 				logger.error("Error while writing %s : %s", packagename, exc)
 				failed_downloads.append((item, exc))
@@ -324,13 +339,13 @@ class GPlaycli:
 	@hooks.connected
 	def bulkdetails(self, pkg_todetail):
 		"""
-        Get deatils for apks from the pkg_todetail list
+		Get deatils for apks from the pkg_todetail list
 
-        pkg_todetail -- list of app names
+		pkg_todetail -- list of app names
 
-        Example: ['org.mozilla.focus','org.mozilla.firefox']
+		Example: ['org.mozilla.focus','org.mozilla.firefox']
 
-        """
+		"""
 		# BulkDetails requires only one HTTP request
 		# Get APK info from store
 		try:
@@ -343,13 +358,13 @@ class GPlaycli:
 	@hooks.connected
 	def details(self, pkg_todetail):
 		"""
-	    Get deatils for apks from the pkg_todetail list
+		Get deatils for apks from the pkg_todetail list
 
-	    pkg_todetail -- a single app name
+		pkg_todetail -- a single app name
 
-	    Example: 'org.mozilla.focus'
+		Example: 'org.mozilla.focus'
 
-	    """
+		"""
 		# BulkDetails requires only one HTTP request
 		# Get APK info from store
 		try:
