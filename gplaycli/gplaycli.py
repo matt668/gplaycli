@@ -290,6 +290,8 @@ class GPlaycli:
 			splits = data_iter['splits']
 			total_size = int(data_iter['file']['total_size'])
 			chunk_size = int(data_iter['file']['chunk_size'])
+			filenames = []
+			
 			try:
 				with open(filepath, "wb") as fbuffer:
 					bar = util.progressbar(expected_size=total_size, hide=not self.progress_bar)
