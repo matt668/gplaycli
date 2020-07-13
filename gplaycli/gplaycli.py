@@ -315,16 +315,16 @@ class GPlaycli:
 					for split in splits:
 						split_total_size = int(split['file']['total_size'])
 						split_chunk_size = int(split['file']['chunk_size'])
-                        splitfilename = "%s-%s.apk" % (detail['docid'], split['name'])
-                        splitfilename = os.path.join(download_folder, splitfilename)
-                        filenames.append(splitfilename)
+						splitfilename = "%s-%s.apk" % (detail['docid'], split['name'])
+						splitfilename = os.path.join(download_folder, splitfilename)
+						filenames.append(splitfilename)
 						with open(splitfilename, "wb") as fbuffer:
 							bar = util.progressbar(expected_size=split_total_size, hide=not self.progress_bar)
 							for index, chunk in enumerate(split["file"]["data"]):
 								fbuffer.write(chunk)
 								bar.show(index * split_chunk_size)
 							bar.done()
-                print(filenames)
+				print(filenames)
 			except IOError as exc:
 				logger.error("Error while writing %s : %s", packagename, exc)
 				failed_downloads.append((item, exc))
